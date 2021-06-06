@@ -29,6 +29,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import java.util.Arrays;
 import java.util.stream.Stream;
 
+import static net.daporkchop.fp2.debug.FP2Debug.*;
 import static net.daporkchop.fp2.util.Constants.*;
 import static net.daporkchop.fp2.util.math.MathUtil.*;
 import static net.daporkchop.lib.common.math.PMath.*;
@@ -54,7 +55,7 @@ public class VoxelPlayerTracker extends AbstractPlayerTracker<VoxelPos> {
         VoxelPos[] positions = new VoxelPos[pow(d * 2 + 1, 3) * levels];
         int i = 0;
 
-        for (int lvl = 0; lvl < levels; lvl++) {
+        for (int lvl = FP2_DEBUG && FP2Config.debug.skipLevel0 ? 1 : 0; lvl < levels; lvl++) {
             final int baseX = asrRound(playerX, T_SHIFT + lvl);
             final int baseY = asrRound(playerY, T_SHIFT + lvl);
             final int baseZ = asrRound(playerZ, T_SHIFT + lvl);

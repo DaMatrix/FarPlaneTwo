@@ -21,7 +21,6 @@
 package net.daporkchop.fp2.client.gl.object;
 
 import lombok.Getter;
-import lombok.experimental.Accessors;
 import net.daporkchop.lib.unsafe.PCleaner;
 import net.minecraft.client.Minecraft;
 

@@ -27,7 +27,6 @@ import lombok.Getter;
 import lombok.NonNull;
 import net.daporkchop.fp2.util.DirectBufferReuse;
 import net.daporkchop.lib.unsafe.PUnsafe;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 
 import java.nio.ByteBuffer;
@@ -259,6 +258,7 @@ public class GLBuffer extends GLObject implements IGLBuffer {
 
     /**
      * Maps the contents of this buffer into client address space.
+     *
      * @param access one of {@link GL15#GL_READ_ONLY}, {@link GL15#GL_WRITE_ONLY} or {@link GL15#GL_READ_WRITE}
      * @return the memory address of the mapped buffer contents
      */

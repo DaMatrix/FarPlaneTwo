@@ -22,6 +22,9 @@ package net.daporkchop.fp2.util.alloc;
 
 import net.daporkchop.lib.common.math.PMath;
 
+import static java.lang.Math.*;
+import static net.daporkchop.lib.common.math.PMath.*;
+
 /**
  * Allocates memory regions in an arbitrary address space.
  *
@@ -54,8 +57,9 @@ public interface Allocator {
     interface GrowFunction {
         GrowFunction DEFAULT = (oldCapacity, increment) -> {
             final long STEP = 1 << 24L; // 16 MiB
+            final double SQRT2 = 1.4142135623730951d; //approximately sqrt(2)
 
-            return PMath.roundUp(oldCapacity + increment, STEP);
+            return PMath.roundUp(max(oldCapacity + increment, ceilL(oldCapacity * SQRT2)), STEP);
         };
 
         /**
