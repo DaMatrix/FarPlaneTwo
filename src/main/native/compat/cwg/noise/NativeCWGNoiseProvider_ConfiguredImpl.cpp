@@ -253,7 +253,7 @@ public:
         //using intrinsics here because vectorclass doesn't have a way to lookup 64-bit values with 32-bit indices
         if constexpr (INSTRSET >= 8 && VEC_LANES == 4) { //AVX2
             return DOUBLE(_mm256_i32gather_pd(&arr[0], i, 8));
-        } else if constexpr (INSTRSET >= 8 && VEC_LANES == 8) { //AVX512
+        } else if constexpr (INSTRSET >= 9 && VEC_LANES == 8) { //AVX512
             return DOUBLE(_mm512_i32gather_pd(i, &arr[0], 8));
         } else { //AVX or SSE
             static const INT INCREMENT = fp2::simd::increment<INT>();
