@@ -39,11 +39,17 @@ public class TransformFeedbackVoxelRenderStrategy extends AbstractIndexedMultidr
     public void render(@NonNull BlockRenderLayer layer, boolean pre) {
         try (DrawMode mode = DrawMode.LEGACY.begin()) {
             if (layer == BlockRenderLayer.SOLID && !pre) {
+                this.preRender();
                 this.renderSolid(this.passes[0]);
+                this.postRender();
             } else if (layer == BlockRenderLayer.CUTOUT_MIPPED && !pre) {
+                this.preRender();
                 this.renderCutout(this.passes[1]);
+                this.postRender();
             } else if (layer == BlockRenderLayer.TRANSLUCENT && pre) {
+                this.preRender();
                 this.renderTransparent(this.passes[2]);
+                this.postRender();
             }
         }
     }

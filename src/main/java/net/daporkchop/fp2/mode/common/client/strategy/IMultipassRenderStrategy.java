@@ -67,43 +67,41 @@ public interface IMultipassRenderStrategy<POS extends IFarPos, T extends IFarTil
 
     void drawTile(@NonNull IDrawCommandBuffer[] passes, long tile);
 
-    default void renderSolid(@NonNull IDrawCommandBuffer draw) {
+    default void preRender() {
         if (FP2_DEBUG && FP2Config.debug.disableBackfaceCull) {
             GlStateManager.disableCull();
         }
-        GlStateManager.disableAlpha();
+    }
 
-        draw.draw();
-
-        GlStateManager.enableAlpha();
+    default void postRender() {
         if (FP2_DEBUG && FP2Config.debug.disableBackfaceCull) {
             GlStateManager.enableCull();
         }
     }
 
-    default void renderCutout(@NonNull IDrawCommandBuffer draw) {
-        mc.getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE).setBlurMipmap(false, mc.gameSettings.mipmapLevels > 0);
-        GlStateManager.disableCull();
+    default void renderSolid(@NonNull IDrawCommandBuffer draw) {
+        GlStateManager.disableAlpha();
 
         draw.draw();
 
-        GlStateManager.enableCull();
+        GlStateManager.enableAlpha();
+    }
+
+    default void renderCutout(@NonNull IDrawCommandBuffer draw) {
+        mc.getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE).setBlurMipmap(false, mc.gameSettings.mipmapLevels > 0);
+
+        draw.draw();
+
         mc.getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE).restoreLastBlurMipmap();
     }
 
     default void renderTransparent(@NonNull IDrawCommandBuffer draw) {
-        if (FP2_DEBUG && FP2Config.debug.disableBackfaceCull) {
-            GlStateManager.disableCull();
-        }
         glEnable(GL_STENCIL_TEST);
 
         this.renderTransparentStencilPass(draw);
         this.renderTransparentFragmentPass(draw);
 
         glDisable(GL_STENCIL_TEST);
-        if (FP2_DEBUG && FP2Config.debug.disableBackfaceCull) {
-            GlStateManager.enableCull();
-        }
     }
 
     default void renderTransparentStencilPass(@NonNull IDrawCommandBuffer draw) {

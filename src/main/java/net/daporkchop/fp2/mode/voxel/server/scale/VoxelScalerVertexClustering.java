@@ -113,6 +113,8 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
                         continue;
                     }
 
+                    int mask = (tx == SRC_TILE_MAX - 1 ? 4 : 0) | (ty == SRC_TILE_MAX - 1 ? 2 : 0) | (tz == SRC_TILE_MAX - 1 ? 1 : 0);
+
                     for (int i = 0, len = tile.indexCount(); i < len; i += 3) {
                         ExtraVoxelData data0 = new ExtraVoxelData();
                         ExtraVoxelData data1 = new ExtraVoxelData();
@@ -133,7 +135,6 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
                         data2.y = data2.y + (ty << (POS_FRACT_SHIFT + T_SHIFT)) >> 1;
                         data2.z = data2.z + (tz << (POS_FRACT_SHIFT + T_SHIFT)) >> 1;
 
-                        int mask = (tx == SRC_TILE_MAX - 1 ? 4 : 0) | (ty == SRC_TILE_MAX - 1 ? 2 : 0) | (tz == SRC_TILE_MAX - 1 ? 1 : 0);
                         data0.lowEdge &= ~mask;
                         data1.lowEdge &= ~mask;
                         data2.lowEdge &= ~mask;
@@ -159,7 +160,7 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
 
         //sort voxels by weight
         ExtraVoxelData[] srcVertsSorted = srcVerts.toArray(new ExtraVoxelData[0]);
-        Arrays.sort(srcVertsSorted, Comparator.comparingDouble(d -> -d.weight));
+        Arrays.sort(srcVertsSorted);
 
         //build BVH of intersected tiles
         WritableBVH<BoundedVoxelData> bvh = new WritableBVH<>();
@@ -176,8 +177,6 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
             }
             bvh.add(new BoundedVoxelData(data, dst.appendVertex(data)));
         }
-
-        //TODO: the following code *should* prevent duplicate triangles from being emitted, but doesn't seem to work quite right...
 
         ObjectSet<int[]> distinctIndices = new ObjectOpenCustomHashSet<>(new Hash.Strategy<int[]>() {
             @Override
@@ -203,11 +202,15 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
 
         //find best voxels to round to, and add to set to ensure they aren't duplicated
         for (int i = 0, lim = srcVerts.size(); i < lim; ) {
-            distinctIndices.add(new int[]{
+            int[] indices = {
                     findBoundedVoxelData(bvh, srcVerts.get(i++)).idx,
                     findBoundedVoxelData(bvh, srcVerts.get(i++)).idx,
                     findBoundedVoxelData(bvh, srcVerts.get(i++)).idx
-            });
+            };
+
+            if (indices[0] != indices[1] && indices[0] != indices[2] && indices[1] != indices[2]) {
+                distinctIndices.add(indices);
+            }
         }
 
         //write indices to output tile
@@ -218,7 +221,7 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
         return 0L;
     }
 
-    protected static class ExtraVoxelData extends VoxelData {
+    protected static class ExtraVoxelData extends VoxelData implements Comparable<ExtraVoxelData> {
         public double weight;
 
         public void calcWeight(VoxelData d1, VoxelData d2) {
@@ -228,7 +231,12 @@ public class VoxelScalerVertexClustering implements IFarScaler<VoxelPos, VoxelTi
             double x2 = this.x - d2.x;
             double y2 = this.y - d2.y;
             double z2 = this.z - d2.z;
-            this.weight = cos(acos((x1 * x2 + y1 * y2 + z1 * z1) * fastInvSqrt((x1 * x1 + y1 * y1 + z1 * z1) * (x2 * x2 + y2 * y2 + z2 * z2))) * 0.5d);
+            this.weight = -cos(acos((x1 * x2 + y1 * y2 + z1 * z1) * fastInvSqrt((x1 * x1 + y1 * y1 + z1 * z1) * (x2 * x2 + y2 * y2 + z2 * z2))) * 0.5d);
+        }
+
+        @Override
+        public int compareTo(ExtraVoxelData o) {
+            return Double.compare(this.weight, o.weight);
         }
     }
 
