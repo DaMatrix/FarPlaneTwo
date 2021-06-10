@@ -33,6 +33,7 @@ import net.minecraft.util.math.AxisAlignedBB;
 import java.util.Arrays;
 
 import static java.lang.Math.*;
+import static net.daporkchop.fp2.util.math.MathUtil.*;
 import static net.daporkchop.lib.common.util.PValidation.*;
 
 /**
@@ -112,6 +113,28 @@ public final class PointOctree3I {
         }
 
         ExclusiveBoundedNearestNeighborQuery query = new ExclusiveBoundedNearestNeighborQuery(x, y, z, minX, minY, minZ, maxX, maxY, maxZ);
+        this.root.nearestNeighbor(query);
+        return query.bestNeighbor;
+    }
+
+    /**
+     * Finds the point in the octree which has the shortest distance to the given point.
+     *
+     * @param x the point's X coordinate
+     * @param y the point's Y coordinate
+     * @param z the point's Z coordinate
+     * @return the closest point to the given point, or {@code -1} if no points match
+     */
+    public int nearestNeighborMatching(int x, int y, int z, @NonNull PointPredicate condition) {
+        Int2_10_10_10_Rev.checkXYZ(x, "x");
+        Int2_10_10_10_Rev.checkXYZ(y, "y");
+        Int2_10_10_10_Rev.checkXYZ(z, "z");
+
+        if (this.root == null) { //octree is empty! no points match
+            return -1;
+        }
+
+        ConditionalNearestNeighborQuery query = new ConditionalNearestNeighborQuery(x, y, z, condition);
         this.root.nearestNeighbor(query);
         return query.bestNeighbor;
     }
@@ -225,10 +248,7 @@ public final class PointOctree3I {
         protected int bestNeighborDistSq = Integer.MAX_VALUE;
 
         public void update(int point, int x, int y, int z) {
-            int dx = this.x - x;
-            int dy = this.y - y;
-            int dz = this.z - z;
-            int distanceSq = dx * dx + dy * dy + dz * dz;
+            int distanceSq = sq(this.x - x) + sq(this.y - y) + sq(this.z - z);
             if (distanceSq < this.bestNeighborDistSq) {
                 this.bestNeighborDistSq = distanceSq;
                 this.bestNeighbor = point;
@@ -296,5 +316,27 @@ public final class PointOctree3I {
                 super.update(point, x, y, z);
             }
         }
+    }
+
+    protected static class ConditionalNearestNeighborQuery extends NearestNeighborQuery {
+        protected final PointPredicate condition;
+
+        public ConditionalNearestNeighborQuery(int x, int y, int z, @NonNull PointPredicate condition) {
+            super(x, y, z);
+
+            this.condition = condition;
+        }
+
+        @Override
+        public void update(int point, int x, int y, int z) {
+            if (this.condition.test(point, x, y, z)) {
+                super.update(point, x, y, z);
+            }
+        }
+    }
+
+    @FunctionalInterface
+    public interface PointPredicate {
+        boolean test(int point, int x, int y, int z);
     }
 }

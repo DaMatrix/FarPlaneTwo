@@ -21,6 +21,8 @@
 package net.daporkchop.fp2.mode.voxel.client;
 
 import io.netty.buffer.ByteBuf;
+import it.unimi.dsi.fastutil.ints.Int2IntMap;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -53,6 +55,8 @@ import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 import static java.lang.Math.*;
@@ -62,6 +66,8 @@ import static net.daporkchop.fp2.client.gl.OpenGL.*;
 import static net.daporkchop.fp2.mode.voxel.VoxelConstants.*;
 import static net.daporkchop.fp2.util.BlockType.*;
 import static net.daporkchop.fp2.util.Constants.*;
+import static net.daporkchop.fp2.util.math.MathUtil.*;
+import static net.daporkchop.lib.common.util.PorkUtil.*;
 
 /**
  * Shared code for baking voxel geometry.
@@ -146,6 +152,164 @@ public class VoxelBake {
         VoxelData data = new VoxelData();
         BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
 
+        BitSet[] allUnusedSrcVerts = IntStream.range(0, 8).mapToObj(i -> new BitSet()).toArray(BitSet[]::new);
+        BitSet[] allUnusedDstVerts = IntStream.range(0, 8).mapToObj(i -> new BitSet()).toArray(BitSet[]::new);
+
+        for (int i = 0, lim = tile.vertexCount(); i < lim; i++) {
+            tile.getVertex(i, data);
+            allUnusedSrcVerts[data.highEdge].set(i);
+        }
+
+        for (int ti = 1, tx = 0; tx <= 1; tx++) {
+            for (int ty = 0; ty <= 1; ty++) {
+                for (int tz = 1; tz <= 1; tz++, ti++) {
+                    VoxelTile t = srcs[ti];
+                    if (t == null) {
+                        continue;
+                    }
+
+                    for (int j = 0, lim = t.vertexCount(); j < lim; j++) {
+                        t.getVertex(j, data);
+                        if (data.lowEdge == ti) {
+                            allUnusedDstVerts[ti].set(j);
+                        }
+                    }
+                }
+            }
+        }
+
+        List<int[]>[] triangles = buildTriangleIndex(tile);
+
+        for (int ti = 0, tx = 0; tx <= 1; tx++) {
+            for (int ty = 0; ty <= 1; ty++) {
+                for (int tz = 0; tz <= 1; tz++, ti++) {
+                    BitSet unusedSrcVerts = allUnusedSrcVerts[ti];
+                    BitSet usedSrcVerts = new BitSet();
+                    BitSet unusedDstVerts = allUnusedDstVerts[ti];
+                    BitSet usedDstVerts = new BitSet();
+
+                    if (unusedSrcVerts.isEmpty() || unusedDstVerts.isEmpty()) {
+                        continue;
+                    }
+
+                    int[] srcIndicesReal = new int[unusedSrcVerts.cardinality()];
+                    int[] srcPositions = srcIndicesReal.clone();
+                    for (int i = -1, j = 0; (i = unusedSrcVerts.nextSetBit(i + 1)) >= 0; j++) {
+                        srcIndicesReal[j] = i;
+
+                        tile.getVertex(i, data);
+                        srcPositions[j] = Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z);
+                    }
+
+                    int[] dstIndicesReal = new int[unusedDstVerts.cardinality()];
+                    int[] dstPositions = dstIndicesReal.clone();
+                    for (int i = -1, j = 0; (i = unusedDstVerts.nextSetBit(i + 1)) >= 0; j++) {
+                        dstIndicesReal[j] = i;
+
+                        srcs[ti].getVertex(i, data);
+                        dstPositions[j] = Int2_10_10_10_Rev.packXYZ(
+                                (tx << (T_SHIFT + POS_FRACT_SHIFT)) + data.x,
+                                (ty << (T_SHIFT + POS_FRACT_SHIFT)) + data.y,
+                                (tz << (T_SHIFT + POS_FRACT_SHIFT)) + data.z);
+                    }
+
+                    int[] lengths = new int[srcIndicesReal.length * dstIndicesReal.length];
+                    for (int oi = 0, si = 0; si < srcIndicesReal.length; si++) {
+                        for (int di = 0; di < dstIndicesReal.length; di++, oi++) {
+                            int spos = srcPositions[si];
+                            int dpos = dstPositions[di];
+                            lengths[oi] =
+                                    sq(Int2_10_10_10_Rev.unpackX(spos) - Int2_10_10_10_Rev.unpackX(dpos)) +
+                                    sq(Int2_10_10_10_Rev.unpackY(spos) - Int2_10_10_10_Rev.unpackY(dpos)) +
+                                    sq(Int2_10_10_10_Rev.unpackZ(spos) - Int2_10_10_10_Rev.unpackZ(dpos));
+                        }
+                    }
+
+                    Integer[] list = IntStream.range(0, lengths.length).boxed().toArray(Integer[]::new);
+                    Arrays.sort(list, Comparator.comparingInt(i -> lengths[i]));
+
+                    IntList[] toIndices = IntStream.range(0, srcIndicesReal.length).mapToObj(i -> new IntArrayList()).toArray(IntList[]::new);
+                    for (Integer pi : list) {
+                        int si = pi / dstIndicesReal.length;
+                        int di = pi % dstIndicesReal.length;
+
+                        if (!usedSrcVerts.get(si) || !usedDstVerts.get(di)) {
+                            usedSrcVerts.set(si);
+                            usedDstVerts.set(di);
+                            toIndices[si].add(di);
+                        }
+                    }
+
+                    for (int si = 0; si < srcIndicesReal.length; si++) {
+                        int realSrcIndex = srcIndicesReal[si];
+                        tile.getVertex(realSrcIndex, data);
+
+                        int dstPos = dstPositions[toIndices[si].getInt(0)];
+                        data.x = Int2_10_10_10_Rev.unpackX(dstPos);
+                        data.y = Int2_10_10_10_Rev.unpackY(dstPos);
+                        data.z = Int2_10_10_10_Rev.unpackZ(dstPos);
+                        tile.setVertex(realSrcIndex, data);
+
+                        for (int i = 1, lim = toIndices[si].size(); i < lim; i++) {
+                            dstPos = dstPositions[toIndices[si].getInt(i)];
+                            data.x = Int2_10_10_10_Rev.unpackX(dstPos);
+                            data.y = Int2_10_10_10_Rev.unpackY(dstPos);
+                            data.z = Int2_10_10_10_Rev.unpackZ(dstPos);
+                            int newVertexIndex = tile.appendVertex(data);
+
+                            for (int[] triangle : triangles[realSrcIndex]) {
+                                tile.appendTriangle(
+                                        triangle[0] == realSrcIndex ? newVertexIndex : triangle[0],
+                                        triangle[1] == realSrcIndex ? newVertexIndex : triangle[1],
+                                        triangle[2] == realSrcIndex ? newVertexIndex : triangle[2]);
+                            }
+                        }
+                    }
+
+                    /*if (unusedSrcVerts.cardinality() < unusedDstVerts.cardinality()) {
+                        continue;
+                    }
+
+                    int[] tmpArrSrc = new int[unusedSrcVerts.cardinality()];
+                    Int2IntMap srcPosToIndex = new Int2IntOpenHashMap(tmpArrSrc.length);
+                    for (int i = -1, j = 0; (i = unusedSrcVerts.nextSetBit(i + 1)) >= 0; j++) {
+                        tile.getVertex(i, data);
+                        tmpArrSrc[j] = Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z);
+                        srcPosToIndex.put(tmpArrSrc[j], i);
+                    }
+                    PointOctree3I srcOctree = new PointOctree3I(tmpArrSrc);
+
+                    int[] tmpArrDst = new int[unusedDstVerts.cardinality()];
+                    Int2IntMap dstPosToIndex = new Int2IntOpenHashMap(tmpArrDst.length);
+                    for (int i = -1, j = 0; (i = unusedDstVerts.nextSetBit(i + 1)) >= 0; j++) {
+                        srcs[ti].getVertex(i, data);
+                        tmpArrDst[j] = Int2_10_10_10_Rev.packXYZ(
+                                (tx << (T_SHIFT + POS_FRACT_SHIFT)) + data.x,
+                                (ty << (T_SHIFT + POS_FRACT_SHIFT)) + data.y,
+                                (tz << (T_SHIFT + POS_FRACT_SHIFT)) + data.z);
+                        dstPosToIndex.put(tmpArrDst[j], i);
+                    }
+                    PointOctree3I dstOctree = new PointOctree3I(tmpArrDst);
+
+                    for (int i = -1, j = 0; !unusedSrcVerts.isEmpty() && (i = unusedDstVerts.nextSetBit(i + 1)) >= 0; j++) {
+                        int dstPos = tmpArrDst[j];
+                        int srcPos = srcOctree.nearestNeighborMatching(
+                                Int2_10_10_10_Rev.unpackX(dstPos), Int2_10_10_10_Rev.unpackY(dstPos), Int2_10_10_10_Rev.unpackZ(dstPos),
+                                (point, x, y, z) -> !usedSrcVerts.get(srcPosToIndex.get(point)));
+
+                        int srcIndex = srcPosToIndex.get(srcPos);
+                        usedSrcVerts.set(srcIndex);
+
+                        tile.getVertex(srcIndex, data);
+                        data.x = Int2_10_10_10_Rev.unpackX(dstPos);
+                        data.y = Int2_10_10_10_Rev.unpackY(dstPos);
+                        data.z = Int2_10_10_10_Rev.unpackZ(dstPos);
+                        tile.setVertex(srcIndex, data);
+                    }*/
+                }
+            }
+        }
+
         final int level = tilePos.level();
         final int blockX = tilePos.blockX();
         final int blockY = tilePos.blockY();
@@ -168,7 +332,7 @@ public class VoxelBake {
             ATTRIB_COLOR.setRGB(vertices, vertexBase, mc.getBlockColors().colorMultiplier(state, biomeAccess, blockPos, 0));
 
             int lowPos = Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z);
-            if (data.highEdge != 0 && octrees[data.highEdge] != null) { //if this vertex actually extends into the next tile, we should round towards the nearest vertex in said neighboring tile (this is an imperfect solution)
+            if (false && data.highEdge != 0 && octrees[data.highEdge] != null) { //if this vertex actually extends into the next tile, we should round towards the nearest vertex in said neighboring tile (this is an imperfect solution)
                 lowPos = octrees[data.highEdge].nearestNeighbor(data.x, data.y, data.z);
                 data.x = Int2_10_10_10_Rev.unpackX(lowPos);
                 data.y = Int2_10_10_10_Rev.unpackY(lowPos);
@@ -268,5 +432,20 @@ public class VoxelBake {
         }
 
         return highPoints.isEmpty() ? null : new PointOctree3I(highPoints.toIntArray());
+    }
+
+    protected List<int[]>[] buildTriangleIndex(@NonNull VoxelTile tile) {
+        List<int[]>[] lists = uncheckedCast(IntStream.range(0, tile.vertexCount()).mapToObj(i -> new ArrayList<>()).toArray(List[]::new));
+
+        for (int i = 0, lim = tile.triangleCount(); i < lim; i++) {
+            int[] triangle = new int[3];
+            tile.getTriangle(i, triangle);
+
+            for (int v : triangle) {
+                lists[v].add(triangle);
+            }
+        }
+
+        return lists;
     }
 }
