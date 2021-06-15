@@ -190,18 +190,15 @@ public class FP2Config {
         @Config.LangKey("config.fp2.compatibility.reversedZ")
         public boolean reversedZ = true;
 
-        @SideOnly(Side.CLIENT)
         @Config.RequiresMcRestart
         public WorkaroundState workaroundAmdVertexPadding = WorkaroundState.AUTO;
 
-        @SideOnly(Side.CLIENT)
         @Config.RequiresMcRestart
         public WorkaroundState workaroundAmdInt2_10_10_10_REV = WorkaroundState.AUTO;
 
         /**
          * @author DaPorkchop_
          */
-        @SideOnly(Side.CLIENT)
         public enum WorkaroundState {
             AUTO {
                 @Override

@@ -47,7 +47,6 @@ import net.daporkchop.fp2.util.threading.asyncblockaccess.IAsyncBlockAccess;
 import net.daporkchop.fp2.util.threading.futurecache.GenerationNotAllowedException;
 import net.daporkchop.fp2.util.threading.futurecache.IAsyncCache;
 import net.daporkchop.fp2.util.threading.lazy.LazyFutureTask;
-import net.daporkchop.lib.common.function.io.IOSupplier;
 import net.daporkchop.lib.common.util.PorkUtil;
 import net.daporkchop.lib.concurrent.PFutures;
 import net.daporkchop.lib.unsafe.PUnsafe;
@@ -65,8 +64,8 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -89,8 +88,8 @@ public class CCAsyncBlockAccessImpl implements IAsyncBlockAccess, IWorldChangeLi
 
     protected final ExtendedBlockStorage emptyStorage;
 
-    protected final CompletableFuture<ConcurrentBooleanHashSegtreeInt> columnsExistCache;
-    protected final CompletableFuture<ConcurrentBooleanHashSegtreeInt> cubesExistCache;
+    protected final ConcurrentBooleanHashSegtreeInt columnsExistCache;
+    protected final ConcurrentBooleanHashSegtreeInt cubesExistCache;
 
     public CCAsyncBlockAccessImpl(@NonNull WorldServer world) {
         this.world = world;
@@ -101,15 +100,15 @@ public class CCAsyncBlockAccessImpl implements IAsyncBlockAccess, IWorldChangeLi
 
         WorldChangeListenerManager.add(this.world, this);
 
-        this.columnsExistCache = CompletableFuture.supplyAsync((IOSupplier<ConcurrentBooleanHashSegtreeInt>) () -> {
-            ConcurrentBooleanHashSegtreeInt tree = new ConcurrentBooleanHashSegtreeInt(2);
-            CCAsyncBlockAccessImpl.this.storage.forEachColumn(pos -> tree.set(pos.x, pos.z));
-            return tree;
+        this.columnsExistCache = new ConcurrentBooleanHashSegtreeInt(2, () -> {
+            List<int[]> positions = new ArrayList<>();
+            CCAsyncBlockAccessImpl.this.storage.forEachColumn(pos -> positions.add(new int[]{ pos.x, pos.z }));
+            return positions.stream();
         });
-        this.cubesExistCache = CompletableFuture.supplyAsync((IOSupplier<ConcurrentBooleanHashSegtreeInt>) () -> {
-            ConcurrentBooleanHashSegtreeInt tree = new ConcurrentBooleanHashSegtreeInt(3);
-            CCAsyncBlockAccessImpl.this.storage.forEachCube(pos -> tree.set(pos.getX(), pos.getY(), pos.getZ()));
-            return tree;
+        this.cubesExistCache = new ConcurrentBooleanHashSegtreeInt(3, () -> {
+            List<int[]> positions = new ArrayList<>();
+            CCAsyncBlockAccessImpl.this.storage.forEachCube(pos -> positions.add(new int[]{ pos.getX(), pos.getY(), pos.getZ() }));
+            return positions.stream();
         });
     }
 
@@ -158,24 +157,24 @@ public class CCAsyncBlockAccessImpl implements IAsyncBlockAccess, IWorldChangeLi
 
     @Override
     public void onColumnSaved(@NonNull World world, int columnX, int columnZ, @NonNull NBTTagCompound nbt) {
-        this.columnsExistCache.join().set(columnX, columnZ);
+        this.columnsExistCache.set(columnX, columnZ);
         this.columns.notifyUpdate(new ChunkPos(columnX, columnZ), nbt);
     }
 
     @Override
     public void onCubeSaved(@NonNull World world, int cubeX, int cubeY, int cubeZ, @NonNull NBTTagCompound nbt) {
-        this.cubesExistCache.join().set(cubeX, cubeY, cubeZ);
+        this.cubesExistCache.set(cubeX, cubeY, cubeZ);
         this.cubes.notifyUpdate(new CubePos(cubeX, cubeY, cubeZ), nbt);
     }
 
     @Override
     public boolean anyColumnIntersects(int tileX, int tileZ, int level) {
-        return this.columnsExistCache.join().isSet(level, tileX, tileZ);
+        return this.columnsExistCache.isSet(level, tileX, tileZ);
     }
 
     @Override
     public boolean anyCubeIntersects(int tileX, int tileY, int tileZ, int level) {
-        return this.cubesExistCache.join().isSet(level, tileX, tileY, tileZ);
+        return this.cubesExistCache.isSet(level, tileX, tileY, tileZ);
     }
 
     protected IColumn getColumn(int columnX, int columnZ) {

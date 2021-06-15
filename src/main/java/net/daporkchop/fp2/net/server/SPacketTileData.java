@@ -26,6 +26,7 @@ import lombok.NonNull;
 import lombok.Setter;
 import net.daporkchop.fp2.mode.api.Compressed;
 import net.daporkchop.fp2.mode.api.IFarRenderMode;
+import net.daporkchop.fp2.mode.api.ctx.IFarClientContext;
 import net.daporkchop.fp2.mode.api.ctx.IFarWorldClient;
 import net.daporkchop.fp2.util.Constants;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
@@ -60,7 +61,9 @@ public class SPacketTileData implements IMessage {
     public static class Handler implements IMessageHandler<SPacketTileData, IMessage> {
         @Override
         public IMessage onMessage(SPacketTileData message, MessageContext ctx) {
-            ((IFarWorldClient) ctx.getClientHandler().world).contextFor(message.mode).tileCache().receiveTile(uncheckedCast(message.tile));
+            IFarWorldClient world = (IFarWorldClient) ctx.getClientHandler().world;
+            IFarClientContext<?, ?> context = world.contextFor(message.mode);
+            context.tileCache().receiveTile(uncheckedCast(message.tile));
             return null;
         }
     }

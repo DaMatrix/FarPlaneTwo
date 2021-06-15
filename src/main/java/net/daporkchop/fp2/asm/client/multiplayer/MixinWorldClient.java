@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
+import static net.daporkchop.fp2.util.Constants.*;
 import static net.daporkchop.lib.common.util.PorkUtil.*;
 
 /**
@@ -70,6 +71,7 @@ public abstract class MixinWorldClient extends World implements IFarWorldClient 
 
     @Override
     public void switchTo(IFarRenderMode<?, ?> mode) {
+        FP2_LOG.info("switching render mode to {}", mode != null ? mode.name() : null);
         this.active = mode != null ? this.contextFor(mode) : null;
     }
 

@@ -23,10 +23,14 @@ package net.daporkchop.fp2.util.datastructure;
 import lombok.EqualsAndHashCode;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import net.daporkchop.fp2.mode.common.client.FarRenderTree;
+import net.daporkchop.lib.common.function.throwing.ESupplier;
 
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static net.daporkchop.lib.common.util.PValidation.*;
 
@@ -34,36 +38,110 @@ import static net.daporkchop.lib.common.util.PValidation.*;
  * @author DaPorkchop_
  */
 //TODO: make this more memory-efficient
-@RequiredArgsConstructor
 public class ConcurrentBooleanHashSegtreeInt {
-    protected static final int MAX_LEVELS = Integer.SIZE;
-
     protected final Set<Key> set = ConcurrentHashMap.newKeySet();
     protected final int dims;
 
-    public void set(@NonNull int... coords) {
+    protected CompletableFuture<Void> initializationFuture = new CompletableFuture<>();
+
+    public ConcurrentBooleanHashSegtreeInt(int dims, @NonNull ESupplier<Stream<int[]>> coords) {
+        this.dims = positive(dims, "dims");
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                //insert all coordinates into this segtree
+                coords.get().parallel().forEach(this::set);
+
+                //complete the future, then set it to null
+                this.initializationFuture.complete(null);
+                this.initializationFuture = null;
+            } catch (Exception e) {
+                //complete the future with an exception
+                this.initializationFuture.completeExceptionally(e);
+            }
+        });
+    }
+
+    protected Key makeKey(int level, @NonNull int... coords) {
         checkArg(coords.length == this.dims, "expected %d-dimensional array, but found %d!", this.dims, coords.length);
 
-        Key key = new Key(0, coords);
-        for (int i = 0; i < MAX_LEVELS && this.set.add(key); i++, key = key.up()) {
+        switch (coords.length) {
+            case 2:
+                return new Key2(level, coords[0], coords[1]);
+            case 3:
+                return new Key3(level, coords[0], coords[1], coords[2]);
+            default:
+                return new KeyAny(level, coords);
+        }
+    }
+
+    public void set(@NonNull int... coords) {
+        if (this.initializationFuture != null && this.initializationFuture.isCompletedExceptionally()) {
+            //throw an exception if initialization failed
+            this.initializationFuture.join();
+        }
+
+        Key key = this.makeKey(0, coords);
+        for (int i = 0; i < FarRenderTree.DEPTH && this.set.add(key); i++, key = key.up()) {
         }
     }
 
     public boolean isSet(int level, @NonNull int... coords) {
-        checkArg(coords.length == this.dims, "expected %d-dimensional array, but found %d!", this.dims, coords.length);
+        if (this.initializationFuture != null) {
+            //join future to wait until this instance is initialized (or throw an exception if initialization failed)
+            this.initializationFuture.join();
+        }
 
-        return this.set.contains(new Key(level, coords));
+        return this.set.contains(this.makeKey(level, coords));
+    }
+
+    protected static abstract class Key {
+        protected abstract Key up();
+
+        @Override
+        public abstract int hashCode();
+
+        @Override
+        public abstract boolean equals(Object obj);
     }
 
     @RequiredArgsConstructor
-    @EqualsAndHashCode
-    protected static final class Key {
+    @EqualsAndHashCode(callSuper = false)
+    protected static final class Key2 extends Key {
+        protected final int level;
+        protected final int x;
+        protected final int z;
+
+        @Override
+        protected Key up() {
+            return new Key2(this.level + 1, this.x >> 1, this.z >> 1);
+        }
+    }
+
+    @RequiredArgsConstructor
+    @EqualsAndHashCode(callSuper = false)
+    protected static final class Key3 extends Key {
+        protected final int level;
+        protected final int x;
+        protected final int y;
+        protected final int z;
+
+        @Override
+        protected Key up() {
+            return new Key3(this.level + 1, this.x >> 1, this.y >> 1, this.z >> 1);
+        }
+    }
+
+    @RequiredArgsConstructor
+    @EqualsAndHashCode(callSuper = false)
+    protected static final class KeyAny extends Key {
         protected final int level;
         @NonNull
         protected final int[] coords;
 
+        @Override
         public Key up() {
-            return new Key(this.level + 1, IntStream.of(this.coords).map(i -> i >> 1).toArray());
+            return new KeyAny(this.level + 1, IntStream.of(this.coords).map(i -> i >> 1).toArray());
         }
     }
 }

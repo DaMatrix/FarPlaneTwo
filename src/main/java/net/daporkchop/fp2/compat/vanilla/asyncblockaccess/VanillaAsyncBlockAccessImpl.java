@@ -50,6 +50,8 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.AnvilChunkLoader;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -68,19 +70,17 @@ public class VanillaAsyncBlockAccessImpl implements IAsyncBlockAccess, IWorldCha
 
     protected final ChunkCache chunks = new ChunkCache();
 
-    protected final CompletableFuture<ConcurrentBooleanHashSegtreeInt> chunksExistCache;
+    protected final ConcurrentBooleanHashSegtreeInt chunksExistCache = new ConcurrentBooleanHashSegtreeInt(2, () -> {
+        List<int[]> positions = new ArrayList<>();
+        ThreadSafeRegionFileCache.INSTANCE.forEachChunk(VanillaAsyncBlockAccessImpl.this.io.chunkSaveLocation.toPath(), pos -> positions.add(new int[]{ pos.x, pos.z }));
+        return positions.stream();
+    });
 
     public VanillaAsyncBlockAccessImpl(@NonNull WorldServer world) {
         this.world = world;
         this.io = (AnvilChunkLoader) this.world.getChunkProvider().chunkLoader;
 
         WorldChangeListenerManager.add(this.world, this);
-
-        this.chunksExistCache = CompletableFuture.supplyAsync((IOSupplier<ConcurrentBooleanHashSegtreeInt>) () -> {
-            ConcurrentBooleanHashSegtreeInt tree = new ConcurrentBooleanHashSegtreeInt(2);
-            ThreadSafeRegionFileCache.INSTANCE.forEachChunk(VanillaAsyncBlockAccessImpl.this.io.chunkSaveLocation.toPath(), pos -> tree.set(pos.x, pos.z));
-            return tree;
-        });
     }
 
     @Override
@@ -112,12 +112,13 @@ public class VanillaAsyncBlockAccessImpl implements IAsyncBlockAccess, IWorldCha
 
     @Override
     public void onColumnSaved(@NonNull World world, int columnX, int columnZ, @NonNull NBTTagCompound nbt) {
+        this.chunksExistCache.set(columnX, columnZ);
         this.chunks.notifyUpdate(new ChunkPos(columnX, columnZ), nbt);
     }
 
     @Override
     public boolean anyColumnIntersects(int tileX, int tileZ, int level) {
-        return this.chunksExistCache.join().isSet(level, tileX, tileZ);
+        return this.chunksExistCache.isSet(level, tileX, tileZ);
     }
 
     @Override
