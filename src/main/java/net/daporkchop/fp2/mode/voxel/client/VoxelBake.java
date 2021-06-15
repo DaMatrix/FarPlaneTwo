@@ -94,7 +94,7 @@ public class VoxelBake {
             .interpretation(VertexAttributeInterpretation.NORMALIZED_FLOAT)
             .build();
 
-    protected static final IVertexAttribute.Int3 ATTRIB_POS = IVertexAttribute.Int3.builder(ATTRIB_COLOR)
+    protected static final IVertexAttribute.Int4 ATTRIB_POS = IVertexAttribute.Int4.builder(ATTRIB_COLOR)
             .alignAndPadTo(EFFECTIVE_VERTEX_ATTRIBUTE_ALIGNMENT)
             .type(WORKAROUND_AMD_INT_2_10_10_10_REV ? VertexAttributeType.SHORT : VertexAttributeType.INT_2_10_10_10_REV)
             .interpretation(VertexAttributeInterpretation.FLOAT)
@@ -107,200 +107,25 @@ public class VoxelBake {
         VERTEX_FORMAT.configureVAO(vao, buffer);
     }
 
-    protected static int vertexMapIndex(int dx, int dy, int dz, int i, int edge) {
-        int j = CONNECTION_INDICES[i];
-        int ddx = dx + ((j >> 2) & 1);
-        int ddy = dy + ((j >> 1) & 1);
-        int ddz = dz + (j & 1);
-
-        return ((ddx * T_VERTS + ddy) * T_VERTS + ddz) * EDGE_COUNT + edge;
-    }
-
     public void bakeForShaderDraw(@NonNull VoxelPos dstPos, @NonNull VoxelTile[] srcs, @NonNull BakeOutput output, @NonNull ByteBuf verts, @NonNull ByteBuf[] indices) {
         if (srcs[0] == null) {
             return;
         }
 
-        final int level = dstPos.level();
-        final int blockX = dstPos.blockX();
-        final int blockY = dstPos.blockY();
-        final int blockZ = dstPos.blockZ();
+        //step 1: write vertices for the source tile, and assign indices
+        writeVertices(dstPos, srcs[0], verts);
 
-        /*//step 1: write vertices for all source tiles, and assign indices
-        writeVertices(srcs, blockX, blockY, blockZ, level, map, verts);
-
-        //step 2: write vertices for all source tiles, and assign indices
-        writeVertices(srcs, blockX, blockY, blockZ, level, lowOctree, highOctree, map, verts, output);
-
-        //step 3: write indices to actually connect the vertices and build the mesh
-        writeIndices(srcs[0], map, indices, lowOctree);*/
-
-        writeVertices(dstPos, srcs[0], srcs, verts, buildLowPointOctrees(srcs), buildHighPointOctree(srcs, dstPos));
+        //step 2: write indices to actually connect the vertices and build the mesh
         writeIndices(srcs[0], indices);
+
+        //force parent tile to be rendered over this one
+        output.forceRenderParent = true;
     }
 
-    protected void writeVertices(@NonNull VoxelPos tilePos, @NonNull VoxelTile tile, @NonNull VoxelTile[] srcs, @NonNull ByteBuf vertices, @NonNull PointOctree3I[] octrees, PointOctree3I highOctree) {
+    protected void writeVertices(@NonNull VoxelPos tilePos, @NonNull VoxelTile tile, @NonNull ByteBuf vertices) {
         SingleBiomeBlockAccess biomeAccess = new SingleBiomeBlockAccess();
         VoxelData data = new VoxelData();
         BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
-
-        BitSet[] allUnusedSrcVerts = IntStream.range(0, 8).mapToObj(i -> new BitSet()).toArray(BitSet[]::new);
-        BitSet[] allUnusedDstVerts = IntStream.range(0, 8).mapToObj(i -> new BitSet()).toArray(BitSet[]::new);
-
-        for (int i = 0, lim = tile.vertexCount(); i < lim; i++) {
-            tile.getVertex(i, data);
-            allUnusedSrcVerts[data.highEdge].set(i);
-        }
-
-        for (int ti = 1, tx = 0; tx <= 1; tx++) {
-            for (int ty = 0; ty <= 1; ty++) {
-                for (int tz = 1; tz <= 1; tz++, ti++) {
-                    VoxelTile t = srcs[ti];
-                    if (t == null) {
-                        continue;
-                    }
-
-                    for (int j = 0, lim = t.vertexCount(); j < lim; j++) {
-                        t.getVertex(j, data);
-                        if (data.lowEdge == ti) {
-                            allUnusedDstVerts[ti].set(j);
-                        }
-                    }
-                }
-            }
-        }
-
-        List<int[]>[] triangles = buildTriangleIndex(tile);
-
-        for (int ti = 0, tx = 0; tx <= 1; tx++) {
-            for (int ty = 0; ty <= 1; ty++) {
-                for (int tz = 0; tz <= 1; tz++, ti++) {
-                    BitSet unusedSrcVerts = allUnusedSrcVerts[ti];
-                    BitSet usedSrcVerts = new BitSet();
-                    BitSet unusedDstVerts = allUnusedDstVerts[ti];
-                    BitSet usedDstVerts = new BitSet();
-
-                    if (unusedSrcVerts.isEmpty() || unusedDstVerts.isEmpty()) {
-                        continue;
-                    }
-
-                    int[] srcIndicesReal = new int[unusedSrcVerts.cardinality()];
-                    int[] srcPositions = srcIndicesReal.clone();
-                    for (int i = -1, j = 0; (i = unusedSrcVerts.nextSetBit(i + 1)) >= 0; j++) {
-                        srcIndicesReal[j] = i;
-
-                        tile.getVertex(i, data);
-                        srcPositions[j] = Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z);
-                    }
-
-                    int[] dstIndicesReal = new int[unusedDstVerts.cardinality()];
-                    int[] dstPositions = dstIndicesReal.clone();
-                    for (int i = -1, j = 0; (i = unusedDstVerts.nextSetBit(i + 1)) >= 0; j++) {
-                        dstIndicesReal[j] = i;
-
-                        srcs[ti].getVertex(i, data);
-                        dstPositions[j] = Int2_10_10_10_Rev.packXYZ(
-                                (tx << (T_SHIFT + POS_FRACT_SHIFT)) + data.x,
-                                (ty << (T_SHIFT + POS_FRACT_SHIFT)) + data.y,
-                                (tz << (T_SHIFT + POS_FRACT_SHIFT)) + data.z);
-                    }
-
-                    int[] lengths = new int[srcIndicesReal.length * dstIndicesReal.length];
-                    for (int oi = 0, si = 0; si < srcIndicesReal.length; si++) {
-                        for (int di = 0; di < dstIndicesReal.length; di++, oi++) {
-                            int spos = srcPositions[si];
-                            int dpos = dstPositions[di];
-                            lengths[oi] =
-                                    sq(Int2_10_10_10_Rev.unpackX(spos) - Int2_10_10_10_Rev.unpackX(dpos)) +
-                                    sq(Int2_10_10_10_Rev.unpackY(spos) - Int2_10_10_10_Rev.unpackY(dpos)) +
-                                    sq(Int2_10_10_10_Rev.unpackZ(spos) - Int2_10_10_10_Rev.unpackZ(dpos));
-                        }
-                    }
-
-                    Integer[] list = IntStream.range(0, lengths.length).boxed().toArray(Integer[]::new);
-                    Arrays.sort(list, Comparator.comparingInt(i -> lengths[i]));
-
-                    IntList[] toIndices = IntStream.range(0, srcIndicesReal.length).mapToObj(i -> new IntArrayList()).toArray(IntList[]::new);
-                    for (Integer pi : list) {
-                        int si = pi / dstIndicesReal.length;
-                        int di = pi % dstIndicesReal.length;
-
-                        if (!usedSrcVerts.get(si) || !usedDstVerts.get(di)) {
-                            usedSrcVerts.set(si);
-                            usedDstVerts.set(di);
-                            toIndices[si].add(di);
-                        }
-                    }
-
-                    for (int si = 0; si < srcIndicesReal.length; si++) {
-                        int realSrcIndex = srcIndicesReal[si];
-                        tile.getVertex(realSrcIndex, data);
-
-                        int dstPos = dstPositions[toIndices[si].getInt(0)];
-                        data.x = Int2_10_10_10_Rev.unpackX(dstPos);
-                        data.y = Int2_10_10_10_Rev.unpackY(dstPos);
-                        data.z = Int2_10_10_10_Rev.unpackZ(dstPos);
-                        tile.setVertex(realSrcIndex, data);
-
-                        for (int i = 1, lim = toIndices[si].size(); i < lim; i++) {
-                            dstPos = dstPositions[toIndices[si].getInt(i)];
-                            data.x = Int2_10_10_10_Rev.unpackX(dstPos);
-                            data.y = Int2_10_10_10_Rev.unpackY(dstPos);
-                            data.z = Int2_10_10_10_Rev.unpackZ(dstPos);
-                            int newVertexIndex = tile.appendVertex(data);
-
-                            for (int[] triangle : triangles[realSrcIndex]) {
-                                tile.appendTriangle(
-                                        triangle[0] == realSrcIndex ? newVertexIndex : triangle[0],
-                                        triangle[1] == realSrcIndex ? newVertexIndex : triangle[1],
-                                        triangle[2] == realSrcIndex ? newVertexIndex : triangle[2]);
-                            }
-                        }
-                    }
-
-                    /*if (unusedSrcVerts.cardinality() < unusedDstVerts.cardinality()) {
-                        continue;
-                    }
-
-                    int[] tmpArrSrc = new int[unusedSrcVerts.cardinality()];
-                    Int2IntMap srcPosToIndex = new Int2IntOpenHashMap(tmpArrSrc.length);
-                    for (int i = -1, j = 0; (i = unusedSrcVerts.nextSetBit(i + 1)) >= 0; j++) {
-                        tile.getVertex(i, data);
-                        tmpArrSrc[j] = Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z);
-                        srcPosToIndex.put(tmpArrSrc[j], i);
-                    }
-                    PointOctree3I srcOctree = new PointOctree3I(tmpArrSrc);
-
-                    int[] tmpArrDst = new int[unusedDstVerts.cardinality()];
-                    Int2IntMap dstPosToIndex = new Int2IntOpenHashMap(tmpArrDst.length);
-                    for (int i = -1, j = 0; (i = unusedDstVerts.nextSetBit(i + 1)) >= 0; j++) {
-                        srcs[ti].getVertex(i, data);
-                        tmpArrDst[j] = Int2_10_10_10_Rev.packXYZ(
-                                (tx << (T_SHIFT + POS_FRACT_SHIFT)) + data.x,
-                                (ty << (T_SHIFT + POS_FRACT_SHIFT)) + data.y,
-                                (tz << (T_SHIFT + POS_FRACT_SHIFT)) + data.z);
-                        dstPosToIndex.put(tmpArrDst[j], i);
-                    }
-                    PointOctree3I dstOctree = new PointOctree3I(tmpArrDst);
-
-                    for (int i = -1, j = 0; !unusedSrcVerts.isEmpty() && (i = unusedDstVerts.nextSetBit(i + 1)) >= 0; j++) {
-                        int dstPos = tmpArrDst[j];
-                        int srcPos = srcOctree.nearestNeighborMatching(
-                                Int2_10_10_10_Rev.unpackX(dstPos), Int2_10_10_10_Rev.unpackY(dstPos), Int2_10_10_10_Rev.unpackZ(dstPos),
-                                (point, x, y, z) -> !usedSrcVerts.get(srcPosToIndex.get(point)));
-
-                        int srcIndex = srcPosToIndex.get(srcPos);
-                        usedSrcVerts.set(srcIndex);
-
-                        tile.getVertex(srcIndex, data);
-                        data.x = Int2_10_10_10_Rev.unpackX(dstPos);
-                        data.y = Int2_10_10_10_Rev.unpackY(dstPos);
-                        data.z = Int2_10_10_10_Rev.unpackZ(dstPos);
-                        tile.setVertex(srcIndex, data);
-                    }*/
-                }
-            }
-        }
 
         final int level = tilePos.level();
         final int blockX = tilePos.blockX();
@@ -323,7 +148,7 @@ public class VoxelBake {
             ATTRIB_LIGHT.set(vertices, vertexBase, blockLight | (blockLight << 4), skyLight | (skyLight << 4));
             ATTRIB_COLOR.setRGB(vertices, vertexBase, mc.getBlockColors().colorMultiplier(state, biomeAccess, blockPos, 0));
 
-            ATTRIB_POS.set(vertices, vertexBase, data.x, data.y, data.z);
+            ATTRIB_POS.setInt2_10_10_10_rev(vertices, vertexBase, Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z));
         }
     }
 
@@ -340,95 +165,7 @@ public class VoxelBake {
 
             tile.getVertex(v2, data);
             IBlockState state = FastRegistry.getBlockState(data.state);
-            indices[renderType(state)].writeShortLE(v0).writeShortLE(v1).writeShortLE(v2);
+            indices[renderType(state)].writeShortLE(v0).writeShortLE(v1).writeShortLE(v2).writeShortLE(v2); //need to translate this to a quad
         }
-    }
-
-    protected PointOctree3I[] buildLowPointOctrees(VoxelTile[] srcs) {
-        PointOctree3I[] out = new PointOctree3I[8];
-
-        final VoxelData data = new VoxelData();
-        final IntList lowPoints = new IntArrayList();
-
-        for (int i = 0, tx = 0; tx <= 1; tx++) {
-            for (int ty = 0; ty <= 1; ty++) {
-                for (int tz = 0; tz <= 1; tz++, i++) {
-                    VoxelTile tile = srcs[i];
-                    if (tile == null || i == 0) {
-                        continue;
-                    }
-
-                    for (int j = 0, lim = tile.vertexCount(); j < lim; j++) {
-                        tile.getVertex(j, data);
-
-                        int px = (tx << (T_SHIFT + POS_FRACT_SHIFT)) + data.x;
-                        int py = (ty << (T_SHIFT + POS_FRACT_SHIFT)) + data.y;
-                        int pz = (tz << (T_SHIFT + POS_FRACT_SHIFT)) + data.z;
-
-                        if (px >= Int2_10_10_10_Rev.MIN_XYZ_VALUE && px <= Int2_10_10_10_Rev.MAX_XYZ_VALUE
-                            && py >= Int2_10_10_10_Rev.MIN_XYZ_VALUE && py <= Int2_10_10_10_Rev.MAX_XYZ_VALUE
-                            && pz >= Int2_10_10_10_Rev.MIN_XYZ_VALUE && pz <= Int2_10_10_10_Rev.MAX_XYZ_VALUE) { //this will only discard a very small minority of vertices
-                            lowPoints.add(Int2_10_10_10_Rev.packXYZ(px, py, pz));
-                        }
-                    }
-
-                    out[i] = lowPoints.isEmpty() ? null : new PointOctree3I(lowPoints.toIntArray());
-                    lowPoints.clear();
-                }
-            }
-        }
-
-        return out;
-    }
-
-    protected PointOctree3I buildHighPointOctree(VoxelTile[] srcs, VoxelPos pos) {
-        final VoxelData data = new VoxelData();
-        final IntList highPoints = new IntArrayList();
-
-        int offX = -(pos.x() & 1) << (T_SHIFT + POS_FRACT_SHIFT);
-        int offY = -(pos.y() & 1) << (T_SHIFT + POS_FRACT_SHIFT);
-        int offZ = -(pos.z() & 1) << (T_SHIFT + POS_FRACT_SHIFT);
-
-        for (int i = 8, tx = BAKE_HIGH_RADIUS_MIN; tx <= BAKE_HIGH_RADIUS_MAX; tx++) {
-            for (int ty = BAKE_HIGH_RADIUS_MIN; ty <= BAKE_HIGH_RADIUS_MAX; ty++) {
-                for (int tz = BAKE_HIGH_RADIUS_MIN; tz <= BAKE_HIGH_RADIUS_MAX; tz++, i++) {
-                    VoxelTile tile = srcs[i];
-                    if (tile == null) {
-                        continue;
-                    }
-
-                    for (int j = 0; j < tile.vertexCount(); j++) {
-                        tile.getVertex(j, data);
-
-                        int px = (tx << (T_SHIFT + POS_FRACT_SHIFT)) + (data.x << 1) + offX;
-                        int py = (ty << (T_SHIFT + POS_FRACT_SHIFT)) + (data.y << 1) + offY;
-                        int pz = (tz << (T_SHIFT + POS_FRACT_SHIFT)) + (data.z << 1) + offZ;
-
-                        if (px >= Int2_10_10_10_Rev.MIN_XYZ_VALUE && px <= Int2_10_10_10_Rev.MAX_XYZ_VALUE
-                            && py >= Int2_10_10_10_Rev.MIN_XYZ_VALUE && py <= Int2_10_10_10_Rev.MAX_XYZ_VALUE
-                            && pz >= Int2_10_10_10_Rev.MIN_XYZ_VALUE && pz <= Int2_10_10_10_Rev.MAX_XYZ_VALUE) { //this will only discard a very small minority of vertices
-                            highPoints.add(Int2_10_10_10_Rev.packXYZ(px, py, pz));
-                        }
-                    }
-                }
-            }
-        }
-
-        return highPoints.isEmpty() ? null : new PointOctree3I(highPoints.toIntArray());
-    }
-
-    protected List<int[]>[] buildTriangleIndex(@NonNull VoxelTile tile) {
-        List<int[]>[] lists = uncheckedCast(IntStream.range(0, tile.vertexCount()).mapToObj(i -> new ArrayList<>()).toArray(List[]::new));
-
-        for (int i = 0, lim = tile.triangleCount(); i < lim; i++) {
-            int[] triangle = new int[3];
-            tile.getTriangle(i, triangle);
-
-            for (int v : triangle) {
-                lists[v].add(triangle);
-            }
-        }
-
-        return lists;
     }
 }

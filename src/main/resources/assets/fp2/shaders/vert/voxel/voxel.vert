@@ -28,12 +28,12 @@ layout(location = 1) in int in_state;
 layout(location = 2) in vec2 in_light;
 layout(location = 3) in vec3 in_color;
 
-layout(location = 4) in vec3 in_pos;
+layout(location = 4) in vec4 in_pos;
 
 void main() {
     //convert position to vec3 afterwards to minimize precision loss
     ivec3 relative_tile_position = (tile_position.xyz << tile_position.w << T_SHIFT) - glState.camera.position_floor;
-    vec3 relativePos = vec3(relative_tile_position) + in_pos * float(1 << tile_position.w) / 8. - glState.camera.position_fract;
+    vec3 relativePos = vec3(relative_tile_position) + in_pos.xyz * float(1 << tile_position.w) / 8. - glState.camera.position_fract;
 
     float depth = length(relativePos);
 
