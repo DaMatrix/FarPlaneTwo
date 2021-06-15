@@ -27,8 +27,6 @@ import net.daporkchop.fp2.mode.voxel.VoxelTile;
 
 import java.util.stream.Stream;
 
-import static net.daporkchop.fp2.mode.voxel.VoxelConstants.*;
-
 /**
  * @author DaPorkchop_
  */
@@ -40,19 +38,12 @@ public interface IVoxelRenderStrategy extends IFarRenderStrategy<VoxelPos, Voxel
         int z = srcPos.z();
         int level = srcPos.level();
 
-        VoxelPos[] arr = new VoxelPos[8 + 27];
+        VoxelPos[] arr = new VoxelPos[8];
         int i = 0;
         for (int dx = -1; dx <= 0; dx++) {
             for (int dy = -1; dy <= 0; dy++) {
                 for (int dz = -1; dz <= 0; dz++) {
                     arr[i++] = new VoxelPos(level, x + dx, y + dy, z + dz);
-                }
-            }
-        }
-        for (int dx = -2; dx <= 0; dx++) {
-            for (int dy = -2; dy <= 0; dy++) {
-                for (int dz = -2; dz <= 0; dz++) {
-                    arr[i++] = new VoxelPos(level - 1, (x << 1) + dx, (y << 1) + dy, (z << 1) + dz);
                 }
             }
         }
@@ -66,19 +57,12 @@ public interface IVoxelRenderStrategy extends IFarRenderStrategy<VoxelPos, Voxel
         int z = dstPos.z();
         int level = dstPos.level();
 
-        VoxelPos[] arr = new VoxelPos[8 + BAKE_HIGH_CNT * BAKE_HIGH_CNT * BAKE_HIGH_CNT];
+        VoxelPos[] arr = new VoxelPos[8];
         int i = 0;
         for (int dx = 0; dx <= 1; dx++) {
             for (int dy = 0; dy <= 1; dy++) {
                 for (int dz = 0; dz <= 1; dz++) {
                     arr[i++] = new VoxelPos(level, x + dx, y + dy, z + dz);
-                }
-            }
-        }
-        for (int dx = BAKE_HIGH_RADIUS_MIN; dx <= BAKE_HIGH_RADIUS_MAX; dx++) {
-            for (int dy = BAKE_HIGH_RADIUS_MIN; dy <= BAKE_HIGH_RADIUS_MAX; dy++) {
-                for (int dz = BAKE_HIGH_RADIUS_MIN; dz <= BAKE_HIGH_RADIUS_MAX; dz++) {
-                    arr[i++] = new VoxelPos(level + 1, (x >> 1) + dx, (y >> 1) + dy, (z >> 1) + dz);
                 }
             }
         }

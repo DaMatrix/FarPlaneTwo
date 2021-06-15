@@ -26,28 +26,19 @@
 
 layout(location = 1) in int in_state;
 layout(location = 2) in vec2 in_light;
-layout(location = 3) in vec4 in_color;
+layout(location = 3) in vec3 in_color;
 
-layout(location = 4) in vec4 in_pos_low;
-layout(location = 5) in vec4 in_pos_high;
+layout(location = 4) in vec3 in_pos;
 
 void main() {
     //convert position to vec3 afterwards to minimize precision loss
     ivec3 relative_tile_position = (tile_position.xyz << tile_position.w << T_SHIFT) - glState.camera.position_floor;
-    vec3 relativePos = vec3(relative_tile_position) + in_pos_low.xyz * float(1 << tile_position.w) / 8. - glState.camera.position_fract;
+    vec3 relativePos = vec3(relative_tile_position) + in_pos * float(1 << tile_position.w) / 8. - glState.camera.position_fract;
 
     float depth = length(relativePos);
 
     //set fog depth here, simply because it's going to change by at most a few blocks (negligable) and this prevents us from having to compute the depth twice
     fog_out.depth = depth;
-
-    //mix low and high vertex positions based on depth
-    float cutoff_scale = float(fp2_state.view.levelCutoffDistance << tile_position.w);
-    float start = cutoff_scale * fp2_state.view.transitionStart;
-    float end = cutoff_scale * fp2_state.view.transitionEnd;
-
-    vec3 relativePos_high = vec3(relative_tile_position) + in_pos_high.xyz * float(1 << tile_position.w) / 8. - glState.camera.position_fract;
-    relativePos = mix(relativePos_high, relativePos, clamp((end - depth) / (end - start), 0., 1.));
 
     //vertex position is detail mixed
     gl_Position = cameraTransform(relativePos) + glState.camera.anti_flicker_offset;
@@ -58,5 +49,5 @@ void main() {
     //copy trivial attributes
     vs_out.light = in_light;
     vs_out.state = in_state;
-    vs_out.color = computeVertexColor(in_color.rgb, start, end, depth);
+    vs_out.color = computeVertexColor(in_color, 0., 0., depth);
 }

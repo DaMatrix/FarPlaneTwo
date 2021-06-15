@@ -115,6 +115,7 @@ public class Constants {
 
     public static final Ref<ArrayAllocator<byte[]>> ALLOC_BYTE = ThreadRef.soft(() -> ArrayAllocator.pow2(byte[]::new, ReferenceType.STRONG, 32));
     public static final Ref<ArrayAllocator<int[]>> ALLOC_INT = ThreadRef.soft(() -> ArrayAllocator.pow2(int[]::new, ReferenceType.STRONG, 32));
+    public static final Ref<ArrayAllocator<float[]>> ALLOC_FLOAT = ThreadRef.soft(() -> ArrayAllocator.pow2(float[]::new, ReferenceType.STRONG, 32));
     public static final Ref<ArrayAllocator<double[]>> ALLOC_DOUBLE = ThreadRef.soft(() -> ArrayAllocator.pow2(double[]::new, ReferenceType.STRONG, 32));
 
     public static void bigWarning(String format, Object... data) {

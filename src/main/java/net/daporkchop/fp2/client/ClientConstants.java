@@ -112,7 +112,6 @@ public class ClientConstants {
      */
     @SideOnly(Side.CLIENT)
     public static void emitQuad(ByteBuf indices, int oppositeCorner, int c0, int c1, int provoking) {
-        indices.writeShortLE(oppositeCorner).writeShortLE(c0).writeShortLE(provoking); //first triangle
-        indices.writeShortLE(c1).writeShortLE(oppositeCorner).writeShortLE(provoking); //second triangle
+        indices.writeShortLE(c1).writeShortLE(oppositeCorner).writeShortLE(c0).writeShortLE(provoking);
     }
 }

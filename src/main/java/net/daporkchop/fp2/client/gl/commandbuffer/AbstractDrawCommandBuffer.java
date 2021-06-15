@@ -26,7 +26,7 @@ import net.daporkchop.lib.unsafe.PUnsafe;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import static net.daporkchop.fp2.client.gl.OpenGL.*;
+import static net.daporkchop.fp2.util.math.MathUtil.*;
 import static net.daporkchop.lib.common.util.PValidation.*;
 import static org.lwjgl.opengl.GL15.*;
 
@@ -69,7 +69,7 @@ public abstract class AbstractDrawCommandBuffer implements IDrawCommandBuffer {
     }
 
     protected void grow() {
-        this.capacity <<= 1;
+        this.capacity = this.capacity + asrCeil(this.capacity, 1); // * 1.5
         this.cleanedAddr.set(this.addr = PUnsafe.reallocateMemory(this.addr, this.capacity * this.entrySize));
     }
 

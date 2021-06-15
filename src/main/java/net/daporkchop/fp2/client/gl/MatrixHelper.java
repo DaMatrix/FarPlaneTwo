@@ -24,11 +24,15 @@ import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import net.daporkchop.fp2.client.ReversedZ;
 import net.daporkchop.fp2.util.DirectBufferReuse;
+import net.daporkchop.lib.common.pool.array.ArrayAllocator;
 import net.daporkchop.lib.unsafe.PUnsafe;
 
 import java.nio.FloatBuffer;
 
 import static net.daporkchop.fp2.client.gl.OpenGL.*;
+import static net.daporkchop.fp2.util.Constants.*;
+import static net.daporkchop.fp2.util.math.MathUtil.*;
+import static net.daporkchop.lib.common.util.PValidation.*;
 import static org.lwjgl.opengl.GL11.*;
 
 /**
@@ -81,22 +85,74 @@ public class MatrixHelper {
         glGetFloat(id, dst);
     }
 
-    public void multiply(@NonNull double[] a, @NonNull double[] b, @NonNull double[] dst) {
-        dst[0] = b[0] * a[0] + b[1] * a[4] + b[2] * a[8] + b[3] * a[12];
-        dst[1] = b[0] * a[1] + b[1] * a[5] + b[2] * a[9] + b[3] * a[13];
-        dst[2] = b[0] * a[2] + b[1] * a[6] + b[2] * a[10] + b[3] * a[14];
-        dst[3] = b[0] * a[3] + b[1] * a[7] + b[2] * a[11] + b[3] * a[15];
-        dst[4] = b[4] * a[0] + b[5] * a[4] + b[6] * a[8] + b[7] * a[12];
-        dst[5] = b[4] * a[1] + b[5] * a[5] + b[6] * a[9] + b[7] * a[13];
-        dst[6] = b[4] * a[2] + b[5] * a[6] + b[6] * a[10] + b[7] * a[14];
-        dst[7] = b[4] * a[3] + b[5] * a[7] + b[6] * a[11] + b[7] * a[15];
-        dst[8] = b[8] * a[0] + b[9] * a[4] + b[10] * a[8] + b[11] * a[12];
-        dst[9] = b[8] * a[1] + b[9] * a[5] + b[10] * a[9] + b[11] * a[13];
-        dst[10] = b[8] * a[2] + b[9] * a[6] + b[10] * a[10] + b[11] * a[14];
-        dst[11] = b[8] * a[3] + b[9] * a[7] + b[10] * a[11] + b[11] * a[15];
-        dst[12] = b[12] * a[0] + b[13] * a[4] + b[14] * a[8] + b[15] * a[12];
-        dst[13] = b[12] * a[1] + b[13] * a[5] + b[14] * a[9] + b[15] * a[13];
-        dst[14] = b[12] * a[2] + b[13] * a[6] + b[14] * a[10] + b[15] * a[14];
-        dst[15] = b[12] * a[3] + b[13] * a[7] + b[14] * a[11] + b[15] * a[15];
+    public void getModelViewProjectionMatrix(long dst) {
+        ArrayAllocator<float[]> alloc = ALLOC_FLOAT.get();
+
+        float[] modelView = alloc.atLeast(sq(4));
+        float[] projection = alloc.atLeast(sq(4));
+        float[] modelViewProjection = alloc.atLeast(sq(4));
+        try {
+            //load modelView matrix into array
+            get(GL_MODELVIEW_MATRIX).get(modelView);
+
+            //load projection matrix into array
+            get(GL_PROJECTION_MATRIX).get(projection);
+
+            //multiply matrices
+            multiply4x4(projection, modelView, modelViewProjection);
+
+            //copy result to destination address
+            PUnsafe.copyMemory(modelViewProjection, PUnsafe.ARRAY_FLOAT_BASE_OFFSET, null, dst, (long) sq(4) * FLOAT_SIZE);
+        } finally {
+            alloc.release(modelViewProjection);
+            alloc.release(projection);
+            alloc.release(modelView);
+        }
+    }
+
+    public void multiply4x4(@NonNull float[] a, @NonNull float[] b, @NonNull float[] dst) {
+        //check array length at head to allow JIT to optimize array bounds checks out in method body
+        checkArg(a.length >= sq(4) && b.length >= sq(4) && dst.length >= sq(4));
+
+        //parentheses are to allow out-of-order execution to make more of a difference due to the JVM's strict floating-point precision rules
+        dst[0] = (b[0] * a[0] + b[1] * a[4]) + (b[2] * a[8] + b[3] * a[12]);
+        dst[1] = (b[0] * a[1] + b[1] * a[5]) + (b[2] * a[9] + b[3] * a[13]);
+        dst[2] = (b[0] * a[2] + b[1] * a[6]) + (b[2] * a[10] + b[3] * a[14]);
+        dst[3] = (b[0] * a[3] + b[1] * a[7]) + (b[2] * a[11] + b[3] * a[15]);
+        dst[4] = (b[4] * a[0] + b[5] * a[4]) + (b[6] * a[8] + b[7] * a[12]);
+        dst[5] = (b[4] * a[1] + b[5] * a[5]) + (b[6] * a[9] + b[7] * a[13]);
+        dst[6] = (b[4] * a[2] + b[5] * a[6]) + (b[6] * a[10] + b[7] * a[14]);
+        dst[7] = (b[4] * a[3] + b[5] * a[7]) + (b[6] * a[11] + b[7] * a[15]);
+        dst[8] = (b[8] * a[0] + b[9] * a[4]) + (b[10] * a[8] + b[11] * a[12]);
+        dst[9] = (b[8] * a[1] + b[9] * a[5]) + (b[10] * a[9] + b[11] * a[13]);
+        dst[10] = (b[8] * a[2] + b[9] * a[6]) + (b[10] * a[10] + b[11] * a[14]);
+        dst[11] = (b[8] * a[3] + b[9] * a[7]) + (b[10] * a[11] + b[11] * a[15]);
+        dst[12] = (b[12] * a[0] + b[13] * a[4]) + (b[14] * a[8] + b[15] * a[12]);
+        dst[13] = (b[12] * a[1] + b[13] * a[5]) + (b[14] * a[9] + b[15] * a[13]);
+        dst[14] = (b[12] * a[2] + b[13] * a[6]) + (b[14] * a[10] + b[15] * a[14]);
+        dst[15] = (b[12] * a[3] + b[13] * a[7]) + (b[14] * a[11] + b[15] * a[15]);
+    }
+
+    public void multiply4x4(@NonNull double[] a, @NonNull double[] b, @NonNull double[] dst) {
+        //check array length at head to allow JIT to optimize array bounds checks out in method body
+        checkArg(a.length >= sq(4) && b.length >= sq(4) && dst.length >= sq(4));
+
+        //parentheses are to allow out-of-order execution to make more of a difference due to the JVM's strict floating-point precision rules
+        dst[0] = (b[0] * a[0] + b[1] * a[4]) + (b[2] * a[8] + b[3] * a[12]);
+        dst[1] = (b[0] * a[1] + b[1] * a[5]) + (b[2] * a[9] + b[3] * a[13]);
+        dst[2] = (b[0] * a[2] + b[1] * a[6]) + (b[2] * a[10] + b[3] * a[14]);
+        dst[3] = (b[0] * a[3] + b[1] * a[7]) + (b[2] * a[11] + b[3] * a[15]);
+        dst[4] = (b[4] * a[0] + b[5] * a[4]) + (b[6] * a[8] + b[7] * a[12]);
+        dst[5] = (b[4] * a[1] + b[5] * a[5]) + (b[6] * a[9] + b[7] * a[13]);
+        dst[6] = (b[4] * a[2] + b[5] * a[6]) + (b[6] * a[10] + b[7] * a[14]);
+        dst[7] = (b[4] * a[3] + b[5] * a[7]) + (b[6] * a[11] + b[7] * a[15]);
+        dst[8] = (b[8] * a[0] + b[9] * a[4]) + (b[10] * a[8] + b[11] * a[12]);
+        dst[9] = (b[8] * a[1] + b[9] * a[5]) + (b[10] * a[9] + b[11] * a[13]);
+        dst[10] = (b[8] * a[2] + b[9] * a[6]) + (b[10] * a[10] + b[11] * a[14]);
+        dst[11] = (b[8] * a[3] + b[9] * a[7]) + (b[10] * a[11] + b[11] * a[15]);
+        dst[12] = (b[12] * a[0] + b[13] * a[4]) + (b[14] * a[8] + b[15] * a[12]);
+        dst[13] = (b[12] * a[1] + b[13] * a[5]) + (b[14] * a[9] + b[15] * a[13]);
+        dst[14] = (b[12] * a[2] + b[13] * a[6]) + (b[14] * a[10] + b[15] * a[14]);
+        dst[15] = (b[12] * a[3] + b[13] * a[7]) + (b[14] * a[11] + b[15] * a[15]);
     }
 }

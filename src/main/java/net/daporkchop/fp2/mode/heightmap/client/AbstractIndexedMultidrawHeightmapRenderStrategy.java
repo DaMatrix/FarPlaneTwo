@@ -52,7 +52,7 @@ public abstract class AbstractIndexedMultidrawHeightmapRenderStrategy extends In
     }
 
     @Override
-    public void drawTile(@NonNull IDrawCommandBuffer[] passes, long tile) {
+    public void drawTile(@NonNull IDrawCommandBuffer[][] passes, long tile) {
         long pos = _tile_pos(tile);
         long renderData = _tile_renderData(tile);
 

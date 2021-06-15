@@ -90,24 +90,17 @@ public class VoxelBake {
 
     protected static final IVertexAttribute.Int3 ATTRIB_COLOR = IVertexAttribute.Int3.builder(ATTRIB_LIGHT)
             .alignAndPadTo(EFFECTIVE_VERTEX_ATTRIBUTE_ALIGNMENT)
-            .reportedComponents(4)
             .type(VertexAttributeType.UNSIGNED_BYTE)
             .interpretation(VertexAttributeInterpretation.NORMALIZED_FLOAT)
             .build();
 
-    protected static final IVertexAttribute.Int4 ATTRIB_POS_LOW = IVertexAttribute.Int4.builder(ATTRIB_COLOR)
+    protected static final IVertexAttribute.Int3 ATTRIB_POS = IVertexAttribute.Int3.builder(ATTRIB_COLOR)
             .alignAndPadTo(EFFECTIVE_VERTEX_ATTRIBUTE_ALIGNMENT)
             .type(WORKAROUND_AMD_INT_2_10_10_10_REV ? VertexAttributeType.SHORT : VertexAttributeType.INT_2_10_10_10_REV)
             .interpretation(VertexAttributeInterpretation.FLOAT)
             .build();
 
-    protected static final IVertexAttribute.Int4 ATTRIB_POS_HIGH = IVertexAttribute.Int4.builder(ATTRIB_POS_LOW)
-            .alignAndPadTo(EFFECTIVE_VERTEX_ATTRIBUTE_ALIGNMENT)
-            .type(WORKAROUND_AMD_INT_2_10_10_10_REV ? VertexAttributeType.SHORT : VertexAttributeType.INT_2_10_10_10_REV)
-            .interpretation(VertexAttributeInterpretation.FLOAT)
-            .build();
-
-    protected static final VertexFormat VERTEX_FORMAT = new VertexFormat(ATTRIB_POS_HIGH, max(EFFECTIVE_VERTEX_ATTRIBUTE_ALIGNMENT, INT_SIZE));
+    protected static final VertexFormat VERTEX_FORMAT = new VertexFormat(ATTRIB_POS, max(EFFECTIVE_VERTEX_ATTRIBUTE_ALIGNMENT, INT_SIZE));
 
     public void vertexAttributes(@NonNull IGLBuffer buffer, @NonNull VertexArrayObject vao) {
         FP2_LOG.info("voxel vertex size: {} bytes", VERTEX_FORMAT.size());
@@ -133,9 +126,8 @@ public class VoxelBake {
         final int blockY = dstPos.blockY();
         final int blockZ = dstPos.blockZ();
 
-        /*//step 1: build octrees
-        PointOctree3I lowOctree = buildLowPointOctree(srcs);
-        PointOctree3I highOctree = buildHighPointOctree(srcs, dstPos);
+        /*//step 1: write vertices for all source tiles, and assign indices
+        writeVertices(srcs, blockX, blockY, blockZ, level, map, verts);
 
         //step 2: write vertices for all source tiles, and assign indices
         writeVertices(srcs, blockX, blockY, blockZ, level, lowOctree, highOctree, map, verts, output);
@@ -331,16 +323,7 @@ public class VoxelBake {
             ATTRIB_LIGHT.set(vertices, vertexBase, blockLight | (blockLight << 4), skyLight | (skyLight << 4));
             ATTRIB_COLOR.setRGB(vertices, vertexBase, mc.getBlockColors().colorMultiplier(state, biomeAccess, blockPos, 0));
 
-            int lowPos = Int2_10_10_10_Rev.packXYZ(data.x, data.y, data.z);
-            if (false && data.highEdge != 0 && octrees[data.highEdge] != null) { //if this vertex actually extends into the next tile, we should round towards the nearest vertex in said neighboring tile (this is an imperfect solution)
-                lowPos = octrees[data.highEdge].nearestNeighbor(data.x, data.y, data.z);
-                data.x = Int2_10_10_10_Rev.unpackX(lowPos);
-                data.y = Int2_10_10_10_Rev.unpackY(lowPos);
-                data.z = Int2_10_10_10_Rev.unpackZ(lowPos);
-            }
-
-            ATTRIB_POS_LOW.setInt2_10_10_10_rev(vertices, vertexBase, lowPos);
-            ATTRIB_POS_HIGH.setInt2_10_10_10_rev(vertices, vertexBase, highOctree != null ? highOctree.nearestNeighbor(data.x, data.y, data.z) : lowPos);
+            ATTRIB_POS.set(vertices, vertexBase, data.x, data.y, data.z);
         }
     }
 

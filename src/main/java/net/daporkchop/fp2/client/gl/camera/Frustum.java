@@ -74,7 +74,7 @@ public class Frustum implements IFrustum, ICamera {
             this.modelView[i] = buffer.get(i);
         }
 
-        MatrixHelper.multiply(this.projection, this.modelView, this.mvp);
+        MatrixHelper.multiply4x4(this.projection, this.modelView, this.mvp);
 
         this.init(this.mvp);
     }

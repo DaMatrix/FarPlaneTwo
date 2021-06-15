@@ -24,7 +24,8 @@ import lombok.Getter;
 import net.daporkchop.fp2.client.gl.commandbuffer.IDrawCommandBuffer;
 import net.daporkchop.fp2.mode.api.IFarPos;
 import net.daporkchop.fp2.mode.api.IFarTile;
-import net.daporkchop.lib.common.util.PArrays;
+
+import java.util.stream.IntStream;
 
 import static net.daporkchop.fp2.mode.common.client.RenderConstants.*;
 
@@ -33,20 +34,24 @@ import static net.daporkchop.fp2.mode.common.client.RenderConstants.*;
  */
 @Getter
 public abstract class IndexedMultidrawMultipassRenderStrategy<POS extends IFarPos, T extends IFarTile> extends IndexedMultidrawRenderStrategy<POS, T> implements IMultipassRenderStrategy<POS, T> {
-    protected final IDrawCommandBuffer[] passes = new IDrawCommandBuffer[RENDER_PASS_COUNT];
+    protected final IDrawCommandBuffer[][] passes;
 
     public IndexedMultidrawMultipassRenderStrategy(int vertexSize) {
         super(vertexSize);
 
-        PArrays.fill(this.passes, this::createCommandBuffer);
+        this.passes = IntStream.range(0, RENDER_PASS_COUNT)
+                .mapToObj(pass -> IntStream.range(0, 32).mapToObj(level -> this.createCommandBuffer()).toArray(IDrawCommandBuffer[]::new))
+                .toArray(IDrawCommandBuffer[][]::new);
     }
 
     @Override
     protected void doRelease() {
         super.doRelease();
 
-        for (IDrawCommandBuffer pass : this.passes) {
-            pass.delete();
+        for (IDrawCommandBuffer[] pass : this.passes) {
+            for (IDrawCommandBuffer buffer : pass) {
+                buffer.delete();
+            }
         }
     }
 }

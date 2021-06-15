@@ -31,28 +31,28 @@ import net.daporkchop.fp2.mode.api.IFarTile;
  */
 public interface IShaderBasedMultipassRenderStrategy<POS extends IFarPos, T extends IFarTile> extends IMultipassRenderStrategy<POS, T> {
     @Override
-    default void renderSolid(@NonNull IDrawCommandBuffer draw) {
+    default void renderSolid(@NonNull IDrawCommandBuffer[] draw) {
         try (ShaderProgram program = this.blockShader().use()) {
             IMultipassRenderStrategy.super.renderSolid(draw);
         }
     }
 
     @Override
-    default void renderCutout(@NonNull IDrawCommandBuffer draw) {
+    default void renderCutout(@NonNull IDrawCommandBuffer[] draw) {
         try (ShaderProgram program = this.blockShader().use()) {
             IMultipassRenderStrategy.super.renderCutout(draw);
         }
     }
 
     @Override
-    default void renderTransparentStencilPass(@NonNull IDrawCommandBuffer draw) {
+    default void renderTransparentStencilPass(@NonNull IDrawCommandBuffer[] draw) {
         try (ShaderProgram program = this.stencilShader().use()) {
             IMultipassRenderStrategy.super.renderTransparentStencilPass(draw);
         }
     }
 
     @Override
-    default void renderTransparentFragmentPass(@NonNull IDrawCommandBuffer draw) {
+    default void renderTransparentFragmentPass(@NonNull IDrawCommandBuffer[] draw) {
         try (ShaderProgram program = this.blockShaderTransparent().use()) {
             IMultipassRenderStrategy.super.renderTransparentFragmentPass(draw);
         }

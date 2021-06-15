@@ -86,6 +86,6 @@ public class IndirectIndexedMultidrawCommandBuffer extends IndirectMultidrawComm
 
     @Override
     protected void multidraw0() {
-        glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_SHORT, POSITION_SIZE_BYTES, this.size, ENTRY_SIZE_BYTES);
+        glMultiDrawElementsIndirect(GL_QUADS, GL_UNSIGNED_SHORT, POSITION_SIZE_BYTES, this.size, ENTRY_SIZE_BYTES);
     }
 }

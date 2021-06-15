@@ -34,14 +34,14 @@ import static net.daporkchop.lib.common.util.PValidation.*;
  * @author DaPorkchop_
  */
 public interface IIndexedMultipassRenderStrategy<POS extends IFarPos, T extends IFarTile> extends IMultipassRenderStrategy<POS, T> {
-    default void drawTileIndexedMultipass(@NonNull IDrawCommandBuffer[] passes, long renderData, int x, int y, int z, int level) {
+    default void drawTileIndexedMultipass(@NonNull IDrawCommandBuffer[][] passes, long renderData, int x, int y, int z, int level) {
         int baseVertex = toInt(_renderdata_vertexOffset(renderData));
         int firstIndex = toInt(_renderdata_indexOffset(renderData));
 
         for (int i = 0; i < RENDER_PASS_COUNT; i++) {
             int count = _renderdata_indexCount(renderData, i);
             if (count != 0) {
-                passes[i].drawElements(x, y, z, level, baseVertex, firstIndex, count);
+                passes[i][level].drawElements(x, y, z, level, baseVertex, firstIndex, count);
                 firstIndex += count;
             }
         }

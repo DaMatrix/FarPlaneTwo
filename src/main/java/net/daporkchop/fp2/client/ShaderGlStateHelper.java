@@ -22,6 +22,7 @@ package net.daporkchop.fp2.client;
 
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
+import net.daporkchop.fp2.client.gl.MatrixHelper;
 import net.daporkchop.fp2.client.gl.object.GLBuffer;
 import net.daporkchop.fp2.util.DirectBufferReuse;
 import net.daporkchop.lib.common.math.PMath;
@@ -48,10 +49,10 @@ public class ShaderGlStateHelper {
     private final GLBuffer BUFFER = new GLBuffer(GL_STREAM_DRAW);
 
     private final int OFFSET_CAMERA = 0;
-    private final int SIZE_CAMERA = 2 * MAT4_SIZE + VEC4_SIZE + IVEC3_SIZE + VEC3_SIZE;
+    private final int SIZE_CAMERA = MAT4_SIZE + VEC4_SIZE + IVEC3_SIZE + VEC3_SIZE;
 
-    private final int OFFSET_FOG = PMath.roundUp(OFFSET_CAMERA + SIZE_CAMERA, VEC4_SIZE);
-    private final int SIZE_FOG = VEC4_SIZE + INT_SIZE + 4 * FLOAT_SIZE;
+    private final int OFFSET_FOG = OFFSET_CAMERA + SIZE_CAMERA;
+    private final int SIZE_FOG = VEC4_SIZE + 4 * FLOAT_SIZE + INT_SIZE;
 
     private final int TOTAL_SIZE = OFFSET_FOG + SIZE_FOG;
 
@@ -63,12 +64,8 @@ public class ShaderGlStateHelper {
         { //camera
             long addr = ADDR_CAMERA;
 
-            //mat4 projection
-            glGetFloat(GL_PROJECTION_MATRIX, DirectBufferReuse.wrapFloat(addr, MAT4_ELEMENTS));
-            addr += MAT4_SIZE;
-
-            //mat4 modelview
-            glGetFloat(GL_MODELVIEW_MATRIX, DirectBufferReuse.wrapFloat(addr, MAT4_ELEMENTS));
+            //mat4 modelviewprojection
+            MatrixHelper.getModelViewProjectionMatrix(addr);
             addr += MAT4_SIZE;
 
             //vec4 anti_flicker_offset

@@ -55,8 +55,7 @@
 //OpenGL state
 
 struct GlCamera {
-    mat4 projection;
-    mat4 modelview;
+    mat4 modelviewprojection;
 
     vec4 anti_flicker_offset;
 
@@ -145,7 +144,7 @@ vec4 fromRGB(int rgb)   {
 // vertex transformation
 
 vec4 cameraTransform(vec4 point) {
-    return glState.camera.projection * glState.camera.modelview * point;
+    return glState.camera.modelviewprojection * point;
 }
 
 vec4 cameraTransform(vec3 point)   {
